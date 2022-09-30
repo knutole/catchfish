@@ -55,6 +55,7 @@ class Evaluation:
         self._num_nodes = num_nodes
         self._mode = mode
         self._include_info = include_info
+        self._results = []
 
     def evaluate(self):
         self.print(
@@ -82,9 +83,7 @@ class Evaluation:
             self._initiate_stockfish_variant(stockfish_version)
             for num_nodes in self._num_nodes:
                 self._num_nodes = num_nodes
-                self.print(
-                    3, "Evaluation | Debug | Searching", self._num_nodes, "nodes."
-                )
+                self.print(2, "Evaluation | Info | Setting", self._num_nodes, "nodes.")
 
                 for game in self.get_games():
                     self.print(
@@ -121,20 +120,16 @@ class Evaluation:
         )
 
     def _save_evaluation(self, evaluation):
-        self.print(3, "Evaluation | Debug | Saving evaluation:", evaluation)
+        self.print(5, "Evaluation | Debug | Saving evaluation:", evaluation)
+        self._results.append(evaluation)
         pass
+
+    def get_results(self):
+        return self._results
 
     def print(self, level, *argv):
         if self._debug_level >= level:
             print(*argv)
-
-
-class GamePosition:
-    """
-    Class for Game positions.
-    """
-
-    pass
 
 
 class Game:
@@ -147,15 +142,18 @@ class Game:
     def __init__(self, game=None, debug_level=4):
         self._game = game
         self._debug_level = debug_level
+        self.print(5, "Game | Debug | Game created: \n", game)
 
-        self.set_headers()
+    #     self.set_headers()
+
+    # def set_headers(self):
+    #     for h in self._game.headers:
+    #         self.print(5, "Game | Debug | Setting header ", h, self._game.headers[h])
+    #         self._headers[h.lower()] = self._game.headers[h]
+    #     self.print(5, "Game | Debug | Headers ", self._headers)
 
     def get_game(self):
         return self._game
-
-    def set_headers(self):
-        for h in self._game.headers:
-            self._headers[h.lower()] = self._game.headers[h]
 
     def get_headers(self):
         return self._game.headers
@@ -166,17 +164,23 @@ class Game:
         except:
             return None
 
+    def get_white_player(self):
+        return self.get_header("White")
+
+    def get_white_playah(self):
+        return self._headers["white"]
+
     def get_info(self):
         return (
-            self._headers["white"]
+            self.get_header("White")
             + " vs "
-            + self._headers["black"]
+            + self.get_header("Black")
             + " "
-            + self._headers["date"]
+            + self.get_header("Date")
             + " "
-            + self._headers["result"]
+            + self.get_header("Result")
             + " "
-            + self._headers["event"]
+            + self.get_header("Event")
         )
 
     def get_positions(self):
@@ -187,11 +191,11 @@ class Game:
                 game = game.next() if game.next() is not None else game
                 self._positions.append(self._get_fen(game))
             except ValueError as ve:
-                self.print(4, "Evaluation | Error |", ve)
+                self.print(4, "Game | Error |", ve)
                 continue
 
             if game.next() is None:
-                self.print(4, "Evaluation | Debug | No more positions.")
+                self.print(4, "Game | Debug | No more positions.")
                 break
         return self._positions
 
@@ -199,7 +203,7 @@ class Game:
         try:
             return game.board().fen()
         except Exception as e:
-            self.print(4, "Evaluation | Error |", e)
+            self.print(4, "Game | Error |", e)
             return None
 
     def print(self, level, *argv):
@@ -214,6 +218,7 @@ class Games:
 
     _games = []
     _invalid_games = 0
+    _headers = {}
 
     def __init__(
         self,
@@ -269,6 +274,9 @@ class Games:
 
     def get_games(self):
         return self._games
+
+    def get_invalid_games(self):
+        return self._invalid_games
 
     def validate_game(self, game):
         try:
@@ -384,6 +392,9 @@ class StockfishVariant:
         )
         self._stockfish = stockfish
         self._initiated = True
+        self.print(
+            2, "Stockfish | Info | Stockfish version", self._version, "initiated."
+        )
         return self._stockfish
 
     def get_version(self):
@@ -499,17 +510,33 @@ if __name__ == "__main__":
 
     file = os.path.join(os.path.dirname(__file__), "tests/" "test.pgn")
     games = Games(path=file)
+
+    print("Invalid games", games.get_invalid_games())
+
+    # for game in games.get_games():
+    #     for position in game.get_positions():
+    #         print(game.get_info(), position)
+
+    for game in games.get_games():
+        # print(game._headers)
+        # print(game.get_headers())
+        # print("game.get_white_player()", game.get_white_player())
+        # print("game.get_white_playah()", game.get_white_playah())
+        print(game.get_info())
+
     evaluation = Evaluation(
         games=games,
-        stockfish_versions=[15],
+        stockfish_versions=[10],
         historical=True,
-        debug_level=4,
+        debug_level=2,
         threads=196,
         hash=4096,
         depth=20,
-        multi_pv=5,
-        num_nodes=["10M"],
+        multi_pv=10,
+        num_nodes=["1M", "2M"],
         mode="nodes",
     )
 
     evaluation.evaluate()
+
+    print("All done!", evaluation.get_results())
