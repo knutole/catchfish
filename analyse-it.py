@@ -64,8 +64,8 @@ import sys, os
 def read_games(path, limit_games=0):
     # file = os.path.join(os.path.dirname(__file__), "tests/" "SusNiemann.pgn")
     file = os.path.join(os.path.dirname(__file__), path)
-    games = Games(path=file, limit_games=limit_games, validate_fen=True)
-    print("Invalid games", games.get_invalid_games())
+    games = Games(path=file, limit_games=limit_games, validate_fen=True, debug_level=2)
+    print("Invalid games", games.get_invalid_games_count())
     return games
 
 
@@ -74,15 +74,33 @@ def run_evaluation(games):
         games=games,
         # games=None,
         # stockfish_versions=[10, 12, 15],
-        stockfish_versions=[15],
+        stockfish_versions=[15, 14, 13, 12, 11],
         historical=True,
         debug_level=2,
         threads=196,
-        hash=4096,
+        hash=32768,
         depth=20,
-        multi_pv=5,
-        # num_nodes=["5M", "10M", "20M"],
-        num_nodes=["30M"],
+        multi_pv=10,
+        num_nodes=[
+            "1M",
+            "2M",
+            "3M",
+            "4M",
+            "5M",
+            "10M",
+            "20M",
+            "30M",
+            "40M",
+            "50M",
+            "60M",
+            "70M",
+            "80M",
+            "90M",
+            "100M",
+            "150M",
+            "200M",
+        ],
+        # num_nodes=["5M"],
         mode="nodes",
         engine_log_file="/home/ubuntu/catchfish/catchfish/analysis.log",
     )
@@ -108,11 +126,12 @@ def run_evaluation(games):
     # - supercomputer
 
 
-def run_analysis(key):
-    e = Evaluation()
+def run_analysis(key, debug_level=2):
+    e = Evaluation(debug_level=debug_level)
     evaluation = e.get_result_by_key(key)
-    a = Analysis(evaluation=evaluation, debug_level=4)
-    a.analyse()
+    a = Analysis(evaluation=evaluation, debug_level=debug_level)
+    result = a.analyse()
+    print("All done!", result)
 
 
 # run_analysis(key="a90a80d57c96f5e9497b0cabca11298e")
@@ -124,6 +143,14 @@ def run_analysis(key):
 # run_analysis(key="0592620cef366ed55cb64fe56a0d6180")
 # run_analysis(key="2602d7b9345c4df4de2d2cc86e0c4fe1")
 # run_analysis(key="3d11a60fde39baec7ea0fd562d864d2e")
+# run_analysis(key="aa62e04ae716c7524cd8376481ac816d")
 
-games = read_games("tests/SusNiemann.pgn", limit_games=2)
-keys = run_evaluation(games)
+# run_analysis(key="31a7af5d341469657f3a6aeeab08bc29")
+# run_analysis(key="591340f6165848093a8e2e5b5fab26c8", debug_level=4)
+# run_analysis(key="95cb56cb9b4279bd45f58f9cc5574217", debug_level=2) # bug
+# run_analysis(key="11006ada41c43466e012e5d5a48e2131", debug_level=2)
+run_analysis(key="b9c1251bc1628c377c1d22fa1535833f", debug_level=2)
+
+
+# games = read_games("tests/SusNiemann.pgn", limit_games=0)
+# keys = run_evaluation(games)

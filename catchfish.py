@@ -53,7 +53,7 @@ class Analysis:
         )
 
     def analyse(self):
-        self._analyse()
+        return self._analyse()
         pass
         # things to analyse:
         # - √ centipawnloss per move
@@ -72,6 +72,7 @@ class Analysis:
         # - historically_acccurate = if engine used was available at the time of the game
         # - ELO performance according to engine
         # - ELO performance compared to ELO of player in game
+        # - mixing best moves from different engine/num_nodes
         #
         # goal:
         # - to show all (relevant) moves in a game compared to engines on different strengths
@@ -87,7 +88,218 @@ class Analysis:
             self._analyse_move(move, idx)
 
         # per game
-        self.print(4, "Analysis | Debug | Moves: ", self._moves)
+        # self.print(4, "Analysis | Debug | Moves: ", self._moves)
+        self._analyse_game()
+
+        for move in self._moves:
+            move.pop("board")
+
+        return json.dumps({"game": self._game_analysis, "moves": self._moves})
+
+    def _analyse_game(self):
+
+        white_acl_all_moves = self._get_acl_all("white")
+        white_acl_select_moves = self._get_acl_select(
+            turn="white", ignore_first_moves=10, ignore_forced_moves=3
+        )
+        white_wdl_delta_all_moves = self._get_awdl_all("white")
+        white_wdl_delta_select_moves = self._get_awdl_select(
+            turn="white", ignore_first_moves=10, ignore_forced_moves=3
+        )
+        white_top_engine_moves = self._get_top_engine_moves("white")
+        (
+            white_inaccuracies_all_moves,
+            white_mistakes_all_moves,
+            white_blunders_all_moves,
+        ) = self._get_inaccuracies_all("white")
+        (
+            white_inaccuracies_select_moves,
+            white_mistakes_select_moves,
+            white_blunders_select_moves,
+        ) = self._get_inaccuracies_select(
+            turn="white", ignore_first_moves=10, ignore_forced_moves=3
+        )
+
+        black_acl_all_moves = self._get_acl_all("black")
+        black_acl_select_moves = self._get_acl_select(
+            turn="black", ignore_first_moves=10, ignore_forced_moves=3
+        )
+        black_wdl_delta_all_moves = self._get_awdl_all("black")
+        black_wdl_delta_select_moves = self._get_awdl_select(
+            turn="black", ignore_first_moves=10, ignore_forced_moves=3
+        )
+        black_top_engine_moves = self._get_top_engine_moves("black")
+        (
+            black_inaccuracies_all_moves,
+            black_mistakes_all_moves,
+            black_blunders_all_moves,
+        ) = self._get_inaccuracies_all("black")
+        (
+            black_inaccuracies_select_moves,
+            black_mistakes_select_moves,
+            black_blunders_select_moves,
+        ) = self._get_inaccuracies_select(
+            turn="black", ignore_first_moves=10, ignore_forced_moves=3
+        )
+
+        self._game_analysis = {
+            "white": {
+                "acl_all_moves": white_acl_all_moves,
+                "acl_select_moves": white_acl_select_moves,
+                "wdl_delta_all_moves": white_wdl_delta_all_moves,
+                "wdl_delta_select_moves": white_wdl_delta_select_moves,
+                "top_engine_moves": white_top_engine_moves,
+                "inaccuracies_all_moves": white_inaccuracies_all_moves,
+                "mistakes_all_moves": white_mistakes_all_moves,
+                "blunders_all_moves": white_blunders_all_moves,
+                "inaccuracies_select_moves": white_inaccuracies_select_moves,
+                "mistakes_select_moves": white_mistakes_select_moves,
+                "blunders_select_moves": white_blunders_select_moves,
+            },
+            "black": {
+                "acl_all_moves": black_acl_all_moves,
+                "acl_select_moves": black_acl_select_moves,
+                "wdl_delta_all_moves": black_wdl_delta_all_moves,
+                "wdl_delta_select_moves": black_wdl_delta_select_moves,
+                "top_engine_moves": black_top_engine_moves,
+                "inaccuracies_all_moves": black_inaccuracies_all_moves,
+                "mistakes_all_moves": black_mistakes_all_moves,
+                "blunders_all_moves": black_blunders_all_moves,
+                "inaccuracies_select_moves": black_inaccuracies_select_moves,
+                "mistakes_select_moves": black_mistakes_select_moves,
+                "blunders_select_moves": black_blunders_select_moves,
+            },
+        }
+
+    def _get_acl_all(self, turn):
+        cpls = []
+        for move in self._moves:
+            if move["turn"] == turn:
+                cpls.append(move["centipawn_loss"]) if move[
+                    "centipawn_loss"
+                ] is not None else None
+        return round(sum(cpls) / len(cpls), 1) if len(cpls) > 0 else None
+
+    def _get_acl_select(self, turn, ignore_first_moves=10, ignore_forced_moves=3):
+        cpls = []
+        for idx, move in enumerate(self._moves):
+            if move["turn"] == turn:
+                if (
+                    idx >= ignore_first_moves
+                    and move["legal_moves"] > ignore_forced_moves
+                ):
+                    cpls.append(move["centipawn_loss"]) if move[
+                        "centipawn_loss"
+                    ] is not None else None
+        return round(sum(cpls) / len(cpls), 1) if len(cpls) > 0 else None
+
+    def _get_awdl_all(self, turn):
+        win_diffs = []
+        draw_diffs = []
+        lose_diffs = []
+        for move in self._moves:
+            if move["turn"] == turn:
+                win_diffs.append(move["wdl_diff"][0]) if move[
+                    "wdl_diff"
+                ] is not None else None
+                draw_diffs.append(move["wdl_diff"][1]) if move[
+                    "wdl_diff"
+                ] is not None else None
+                lose_diffs.append(move["wdl_diff"][2]) if move[
+                    "wdl_diff"
+                ] is not None else None
+        return (
+            round(sum(win_diffs) / len(win_diffs), 1) if len(win_diffs) > 0 else None,
+            round(sum(draw_diffs) / len(draw_diffs), 1)
+            if len(draw_diffs) > 0
+            else None,
+            round(sum(lose_diffs) / len(lose_diffs), 1)
+            if len(lose_diffs) > 0
+            else None,
+        )
+
+    def _get_awdl_select(self, turn, ignore_first_moves=10, ignore_forced_moves=3):
+        win_diffs = []
+        draw_diffs = []
+        lose_diffs = []
+        for idx, move in enumerate(self._moves):
+            if move["turn"] == turn:
+                if (
+                    idx >= ignore_first_moves
+                    and move["legal_moves"] > ignore_forced_moves
+                ):
+                    win_diffs.append(move["wdl_diff"][0]) if move[
+                        "wdl_diff"
+                    ] is not None else None
+                    draw_diffs.append(move["wdl_diff"][1]) if move[
+                        "wdl_diff"
+                    ] is not None else None
+                    lose_diffs.append(move["wdl_diff"][2]) if move[
+                        "wdl_diff"
+                    ] is not None else None
+        return (
+            round(sum(win_diffs) / len(win_diffs), 1) if len(win_diffs) > 0 else None,
+            round(sum(draw_diffs) / len(draw_diffs), 1)
+            if len(draw_diffs) > 0
+            else None,
+            round(sum(lose_diffs) / len(lose_diffs), 1)
+            if len(lose_diffs) > 0
+            else None,
+        )
+
+    def _get_top_engine_moves(self, turn):
+        top_engine_moves = {}
+        for move in self._moves:
+            if move["turn"] == turn:
+                if "top_engine_move" in move and move["top_engine_move"] is not None:
+                    if move["top_engine_move"] in top_engine_moves:
+                        top_engine_moves[move["top_engine_move"]] += 1
+                    else:
+                        top_engine_moves[move["top_engine_move"]] = 1
+        return top_engine_moves
+
+    def _get_inaccuracies_all(self, turn):
+        inaccuracies = 0
+        mistakes = 0
+        blunders = 0
+        for move in self._moves:
+            if move["turn"] == turn:
+                if move["centipawn_loss"] is not None and move["centipawn_loss"] >= 50:
+                    inaccuracies += 1
+                if move["centipawn_loss"] is not None and move["centipawn_loss"] >= 100:
+                    mistakes += 1
+                if move["centipawn_loss"] is not None and move["centipawn_loss"] >= 300:
+                    blunders += 1
+        return inaccuracies, mistakes, blunders
+
+    def _get_inaccuracies_select(
+        self, turn, ignore_first_moves=10, ignore_forced_moves=3
+    ):
+        inaccuracies = 0
+        mistakes = 0
+        blunders = 0
+        for idx, move in enumerate(self._moves):
+            if move["turn"] == turn:
+                if (
+                    idx >= ignore_first_moves
+                    and move["legal_moves"] > ignore_forced_moves
+                ):
+                    if (
+                        move["centipawn_loss"] is not None
+                        and move["centipawn_loss"] >= 50
+                    ):
+                        inaccuracies += 1
+                    if (
+                        move["centipawn_loss"] is not None
+                        and move["centipawn_loss"] >= 100
+                    ):
+                        mistakes += 1
+                    if (
+                        move["centipawn_loss"] is not None
+                        and move["centipawn_loss"] >= 300
+                    ):
+                        blunders += 1
+        return inaccuracies, mistakes, blunders
 
     def _analyse_move(self, move, idx):
         centipawn_loss = self._get_centipawn_loss(move, idx)
@@ -96,9 +308,7 @@ class Analysis:
         wdl_diff = self._get_wdl_diff(move, idx)
         self.print(5, "Analysis | Debug | WDL loss: ", wdl_diff)
 
-        top_engine_move = self._get_top_moves(
-            move
-        )  # 0 means not found, otherwise 1 to multi_pv
+        top_engine_move = self._get_top_move(move)
         self.print(5, "Analysis | Debug | Top move index: ", top_engine_move)
 
         legal_moves_count = self._get_num_legal_moves(move)
@@ -149,7 +359,7 @@ class Analysis:
     def _get_num_legal_moves(self, move):
         return move["board"].legal_moves.count()
 
-    def _get_top_moves(self, move):
+    def _get_top_move(self, move):
         move_made = move["move"]
         top_move_index = next(
             (
@@ -177,9 +387,17 @@ class Analysis:
                 else None
             )
 
-        wdl_player = player_move["WDL"] if player_move is not None else None
-        wdl_best = best_move["WDL"] if best_move is not None else None
+        wdl_player = (
+            player_move["WDL"]
+            if player_move is not None and "WDL" in player_move
+            else None
+        )
+        wdl_best = (
+            best_move["WDL"] if best_move is not None and "WDL" in best_move else None
+        )
         wdl_diff = self._calc_wdl_diff(wdl_player, wdl_best)
+        self.print(4, "Analysis | Debug | WDL diffs: ", wdl_diff, wdl_player, wdl_best)
+
         return wdl_diff
 
     def _calc_wdl_diff(self, wdl_a, wdl_b):
@@ -222,7 +440,9 @@ class Analysis:
 
         # create moves by parsing PGN
         self._pgn = io.StringIO(self._evaluation["pgn"])
-        self._game = Game(game=chess.pgn.read_game(self._pgn))
+        self._game = Game(
+            game=chess.pgn.read_game(self._pgn), debug_level=self._debug_level
+        )
         self._boards = self._game.get_boards()
 
         moves = []
@@ -350,7 +570,9 @@ class Evaluation:
         self._mode = mode
         self._include_info = include_info
         self._engine_log_file = engine_log_file
-        self._redis = RedisStore(host=redis_host, port=redis_port, db=redis_db)
+        self._redis = RedisStore(
+            host=redis_host, port=redis_port, db=redis_db, debug_level=self._debug_level
+        )
 
     def evaluate(self):
         self.print(
@@ -374,7 +596,7 @@ class Evaluation:
         for stockfish_version in self._stockfish_versions:
             self._stockfish_version = stockfish_version
             self.print(
-                2, "Evaluation | Debug | Using Stockfish version", stockfish_version
+                2, "Evaluation | Info | Using Stockfish version", stockfish_version
             )
             self._initiate_stockfish_variant(stockfish_version)
             for num_nodes in self._num_nodes:
@@ -389,6 +611,11 @@ class Evaluation:
                         3,
                         "Evaluation | Debug | Evaluating game",
                         game.get_info(as_json=True),
+                    )
+                    self.print(
+                        2,
+                        "Evaluation | Info | Evaluating game",
+                        game.get_info_string(),
                     )
 
                     for position in game.get_positions():
@@ -452,7 +679,7 @@ class Evaluation:
     def _restart_stockfish_after_crash(self):
         self.print(3, "Evaluation | Debug | Restarting Stockfish")
 
-        if self._restarts < 10:
+        if self._restarts < 200:
             self._restarts += 1
             self._initiate_stockfish_variant(self._stockfish_version)
             self._evaluate_position()
@@ -464,6 +691,7 @@ class Evaluation:
         self.print(4, "Evaluation | Debug | Saving game evaluation.")
         result = {
             "info": self._game.get_info(),
+            "description": self._game.get_info_string(),
             "evaluation": self._evaluations,
             "engine": self._stockfish_variant.get_long_version(),
             "num_nodes": self._num_nodes,
@@ -480,8 +708,14 @@ class Evaluation:
         self.print(5, "Evaluation | Verbose | Redis key:", redis_key)
         ok = self._redis.set(redis_key, result)
         if ok:
-            self.print(5, "Evaluation | Verbose | Redis key saved:", redis_key)
-            self._game_results_redis_keys.append(redis_key)
+            self.print(
+                2,
+                "Evaluation | Info | Game stored:",
+                {"description": result["description"], "key": redis_key},
+            )
+            self._game_results_redis_keys.append(
+                {"description": result["description"], "key": redis_key}
+            )
         else:
             self.print(5, "Evaluation | Error | Redis key not saved:", redis_key)
 
@@ -521,8 +755,8 @@ class Evaluation:
 
     def get_results(self):
         self._results = []
-        for redis_key in self._game_results_redis_keys:
-            result = self._read_from_redis(redis_key)
+        for item in self._game_results_redis_keys:
+            result = self._read_from_redis(item["key"])
             if result:
                 self._results.append(result)
         return self._results
@@ -779,9 +1013,10 @@ class Games:
                 continue
             if game is None:
                 break
+        self.print(2, "Games | Info | Ingested", len(self._games), "games.")
 
     def ingest_game(self, game):
-        g = Game(game=game)
+        g = Game(game=game, debug_level=self._debug_level)
         if g.is_valid():
             self._games.append(g)
         else:
@@ -790,8 +1025,11 @@ class Games:
     def get_games(self):
         return self._games
 
-    def get_invalid_games(self):
+    def get_invalid_games_count(self):
         return self._invalid_games
+
+    def get_valid_games_count(self):
+        return len(self._games)
 
     def parse_date(self, date):
         try:
