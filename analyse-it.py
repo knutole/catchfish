@@ -1,4 +1,12 @@
-from catchfish import Analysis, RedisStore, Game, Games, Evaluation, StockfishVariant
+from catchfish import (
+    Catchfish,
+    Analysis,
+    RedisStore,
+    Game,
+    Games,
+    Evaluation,
+    StockfishVariant,
+)
 import sys, os
 
 
@@ -152,5 +160,25 @@ def run_analysis(key, debug_level=2):
 # run_analysis(key="b9c1251bc1628c377c1d22fa1535833f", debug_level=2)
 
 
-games = read_games("tests/FTXCryptoCup2022.pgn", limit_games=0)
-keys = run_evaluation(games)
+# games = read_games("tests/FTXCryptoCup2022.pgn", limit_games=0)
+# keys = run_evaluation(games)
+
+# test
+catchfish = Catchfish(
+    # defaults
+    limit_games=0,
+    stockfish_versions=[15],
+    historical=True,
+    log_level="info",
+    threads=32,
+    hash=1024,
+    depth=20,
+    multi_pv=3,
+    num_nodes=["3M"],
+    mode="nodes",
+    engine_log_file="debug.log",
+)
+catchfish.load_games("tests/FTXCryptoCup2022.pgn")
+catchfish.evaluate()
+result = catchfish.analyse()
+print("All done!", result)

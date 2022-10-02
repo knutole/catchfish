@@ -14,6 +14,89 @@ import pprint
 import os, io
 import pydash
 import hashlib
+import inspect
+
+
+class Catchfish:
+    """
+    Convenience class for Catchfish!
+    """
+
+    def __init__(
+        self,
+        limit_games=0,
+        stockfish_versions=[15],
+        historical=True,
+        log_level="info",
+        threads=32,
+        hash=1024,
+        depth=20,
+        multi_pv=3,
+        num_nodes=["30M"],
+        mode="nodes",
+        engine_log_file="debug.log",
+    ):
+        self._limit_games = limit_games
+        self._stockfish_versions = stockfish_versions
+        self._historical = historical
+        self._log_level = log_level
+        self._threads = threads
+        self._hash = hash
+        self._depth = depth
+        self._multi_pv = multi_pv
+        self._num_nodes = num_nodes
+        self._mode = mode
+        self._engine_log_file = engine_log_file
+
+        self._logger = Logger(level=self._log_level)
+        self._logger.info("Initiated")
+        self._logger.debug("Log level:", self._log_level)
+
+    def load_games(self, path):
+        self._games = Games(
+            path=path,
+            log_level=self._log_level,
+            limit_games=self._limit_games,
+        )
+        self._logger.info("Games found: {}".format(len(self._games.get_games())))
+        self._logger.info(
+            "Invalid games found: {}".format(self._games.get_invalid_games_count())
+        )
+
+    def evaluate(self):
+        """
+        Evaluate a pgn file
+        """
+
+        self._evaluation = Evaluation(
+            games=self._games,
+            stockfish_versions=self._stockfish_versions,
+            historical=self._historical,
+            log_level=self._log_level,
+            threads=self._threads,
+            hash=self._hash,
+            depth=self._depth,
+            multi_pv=self._multi_pv,
+            num_nodes=self._num_nodes,
+            mode=self._mode,
+            engine_log_file=self._engine_log_file,
+        )
+        self._logger.info("Starting evaluation")
+        self._evaluation.evaluate()
+        self._logger.info("Evaluation finished")
+
+    def analyse_evaluation(self, evaluation):
+        """
+        Analyse an evaluation
+        """
+        self._logger.info("Analyse evaluation")
+        self._analysis = Analysis(
+            evaluation=self._evaluation, log_level=self._log_level
+        )
+        self._analysis_result = self._analysis.analyse()
+        self._logger.info("Analysis finished")
+
+        return self._analysis_result
 
 
 class Logger:
@@ -24,6 +107,34 @@ class Logger:
     def __init__(self, level="info"):
         self._level = level
 
+    def info(self, *message):
+        if self._levels("info"):
+            self._print(message, self._level)
+
+    def debug(self, *message):
+        if self._levels("debug"):
+            self._print(message, self._level)
+
+    def error(self, *message):
+        if self._levels("error"):
+            self._print(message, self._level)
+
+    def _levels(self, level):
+        levels = ["info", "debug", "error"]
+        return levels.index(level) <= levels.index(self._level)
+
+    def _print(self, message, level):
+        print(
+            "{} | {} | {}".format(
+                level.upper(), self._get_caller(), " ".join(map(str, message))
+            )
+        )
+
+    def _get_caller(self):
+        stack = inspect.stack()
+        the_class = stack[3][0].f_locals["self"].__class__.__name__
+        return the_class
+
 
 class Analysis:
     """
@@ -31,12 +142,15 @@ class Analysis:
     Evaluation result and outputs Analysis result.
     """
 
-    def __init__(self, evaluation=None, debug_level=4):
+    def __init__(self, evaluation=None, log_level="info"):
         self._analysis = {}
         self._moves = []
         self._stockfish_variant = None
         self._evaluation = evaluation
-        self._debug_level = debug_level
+
+        self._log_level = log_level
+        self._logger = Logger(level=self._log_level)
+        self._logger.info("Initiated")
 
         self._initiate_stockfish_variant()
         self._initiate_evaluation()
@@ -48,7 +162,7 @@ class Analysis:
         self._stockfish_variant = StockfishVariant(
             version=stockfish_version,
             threads=threads,
-            debug_level=self._debug_level,
+            log_level=self._log_level,
             initiate=True,
         )
 
@@ -57,7 +171,7 @@ class Analysis:
         # create moves by parsing PGN
         self._pgn = io.StringIO(self._evaluation["pgn"])
         self._game = Game(
-            game=chess.pgn.read_game(self._pgn), debug_level=self._debug_level
+            game=chess.pgn.read_game(self._pgn), log_level=self._log_level
         )
         self._boards = self._game.get_boards()
 
@@ -84,7 +198,7 @@ class Analysis:
             moves[idx].update(e_move)
 
         self._moves = moves
-        self.print(5, "\nAnalysis | Debug | Moves:", self._moves, len(self._moves))
+        self._logger.debug("Moves:", self._moves, len(self._moves))
 
     def analyse(self):
         return self._analyse()
@@ -122,7 +236,6 @@ class Analysis:
             self._analyse_move(move, idx)
 
         # per game
-        # self.print(4, "Analysis | Debug | Moves: ", self._moves)
         self._analyse_game()
 
         for move in self._moves:
@@ -337,19 +450,19 @@ class Analysis:
 
     def _analyse_move(self, move, idx):
         centipawn_loss = self._get_centipawn_loss(move, idx)
-        self.print(5, "Analysis | Debug | Centipawn loss: ", centipawn_loss)
+        self._logger.debug("Centipawn loss: ", centipawn_loss)
 
         wdl_diff = self._get_wdl_diff(move, idx)
-        self.print(5, "Analysis | Debug | WDL loss: ", wdl_diff)
+        self._logger.debug("WDL loss: ", wdl_diff)
 
         top_engine_move = self._get_top_move(move)
-        self.print(5, "Analysis | Debug | Top move index: ", top_engine_move)
+        self._logger.debug("Top move index: ", top_engine_move)
 
         legal_moves_count = self._get_num_legal_moves(move)
-        self.print(5, "Analysis | Debug | Legal moves count: ", legal_moves_count)
+        self._logger.debug("Legal moves count: ", legal_moves_count)
 
         material = self._get_material(move)
-        self.print(5, "Analysis | Debug | Material: ", material)
+        self._logger.debug("Material: ", material)
 
         self._moves[idx].update(
             {
@@ -430,7 +543,7 @@ class Analysis:
             best_move["WDL"] if best_move is not None and "WDL" in best_move else None
         )
         wdl_diff = self._calc_wdl_diff(wdl_player, wdl_best)
-        self.print(4, "Analysis | Debug | WDL diffs: ", wdl_diff, wdl_player, wdl_best)
+        self._logger.debug(" WDL diffs: ", wdl_diff, wdl_player, wdl_best)
 
         return wdl_diff
 
@@ -471,15 +584,11 @@ class Analysis:
         return abs(cpl) if cpl is not None else None
 
     def _get_move_made(self, move):
-        self.print(5, "Analysis | Debug | Got a move: ", move)
+        self._logger.debug("Got a move: ", move)
         fen = move["position"]
         pgn = io.StringIO(self._game["moves"])
         self._game_moves = chess.pgn.read_game(pgn)
-        self.print(5, "Analysis | Debug | Got game moves: ", self._game_moves)
-
-    def print(self, level, *argv):
-        if self._debug_level >= level:
-            print(*argv)
+        self._logger.debug("Got game moves: ", self._game_moves)
 
 
 class RedisStore:
@@ -487,22 +596,25 @@ class RedisStore:
     Class for Redis store, used by Evaluation to store and retrieve results. Faster and safer than writing to file.
     """
 
-    def __init__(self, host="localhost", port=6379, db=1, connect=True, debug_level=4):
+    def __init__(
+        self, host="localhost", port=6379, db=1, connect=True, log_level="info"
+    ):
         self._host = host
         self._port = port
         self._db = db
-        self._debug_level = debug_level
+
+        self._log_level = log_level
+        self._logger = Logger(level=self._log_level)
+        self._logger.info("Initiated")
 
         self.connect() if connect else None
 
     def connect(self):
-        self.print(
-            4, "Redis | Debug | Connecting to Redis", self._host, self._port, self._db
-        )
+        self._logger.info("Connecting to Redis", self._host, self._port, self._db)
         self._store = redis.Redis(host=self._host, port=self._port, db=self._db)
 
     def get(self, key):
-        self.print(4, "Redis | Debug | Getting key", key)
+        self._logger.debug("Getting key", key)
         value = self._store.get(key)
         if value:
             return self.loads(value)
@@ -514,7 +626,7 @@ class RedisStore:
             return value
 
     def set(self, key, value):
-        self.print(4, "Redis | Debug | Setting key", key)
+        self._logger.debug("Setting key", key)
         return self._store.set(key, self.dumps(value))
 
     def dumps(self, value):
@@ -522,10 +634,6 @@ class RedisStore:
             return json.dumps(value)
         except:
             return value
-
-    def print(self, level, *argv):
-        if self._debug_level >= level:
-            print(*argv)
 
 
 class Evaluation:
@@ -546,7 +654,7 @@ class Evaluation:
         games=None,
         stockfish_versions=[9, 10, 11, 12, 13, 14, 15],
         historical=True,
-        debug_level=4,
+        log_level="info",
         threads=196,
         hash=4096,
         depth=20,
@@ -569,7 +677,6 @@ class Evaluation:
         self._games = games
         self._stockfish_versions = stockfish_versions
         self._historical = historical
-        self._debug_level = debug_level
         self._threads = threads
         self._hash = hash
         self._depth = depth
@@ -578,21 +685,24 @@ class Evaluation:
         self._mode = mode
         self._include_info = include_info
         self._engine_log_file = engine_log_file
+
+        self._log_level = log_level
+        self._logger = Logger(level=self._log_level)
+        self._logger.info("Initiated")
+
         self._store = RedisStore(
-            host=redis_host, port=redis_port, db=redis_db, debug_level=self._debug_level
+            host=redis_host, port=redis_port, db=redis_db, log_level=self._log_level
         )
 
     def evaluate(self):
-        self.print(
-            3,
-            "Evaluation | Info | Running evaluation matrix with",
+
+        self._logger.info(
+            "Running evaluation matrix with",
             self._stockfish_versions,
             "Stockfish versions and",
             self._num_nodes,
             "number of nodes.",
         )
-
-        self.print(4, "Evaluation | Debug | Games:", self._games.get_games())
 
         self._evaluate()
 
@@ -603,26 +713,20 @@ class Evaluation:
         # for each fen
         for stockfish_version in self._stockfish_versions:
             self._stockfish_version = stockfish_version
-            self.print(
-                2, "Evaluation | Info | Using Stockfish version", stockfish_version
-            )
+            self._logger.info("Using Stockfish version", stockfish_version)
             self._initiate_stockfish_variant(stockfish_version)
             for num_nodes in self._num_nodes:
                 self._current_num_nodes = num_nodes
-                self.print(
-                    2, "Evaluation | Info | Setting", self._current_num_nodes, "nodes."
-                )
+                self._logger.debug("Setting", self._current_num_nodes, "nodes.")
 
                 for game in self.get_games():
                     self._game = game
-                    self.print(
-                        3,
-                        "Evaluation | Debug | Evaluating game",
+                    self._logger.debug(
+                        "Evaluating game",
                         game.get_info(as_json=True),
                     )
-                    self.print(
-                        2,
-                        "Evaluation | Info | Evaluating game",
+                    self._logger.debug(
+                        "Evaluating game",
                         game.get_info_string(),
                     )
 
@@ -648,7 +752,7 @@ class Evaluation:
             depth=self._depth,
             multi_pv=self._multi_pv,
             mode=self._mode,
-            debug_level=self._debug_level,
+            log_level=self._log_level,
             include_info=self._include_info,
             debug_log_file=self._engine_log_file,
             initiate=True,
@@ -662,9 +766,9 @@ class Evaluation:
             evaluation = self._stockfish_variant.evaluate_position()
             self._save_position_evaluation(evaluation)
         except StockfishException as sfe:
-            self.print(
-                2,
-                "Evaluation | Error | Stockfish has crashed.",
+            self._logger.info("Stockfish has crashed. Fixing...")
+            self._logger.debug(
+                "Stockfish crash info:",
                 sfe,
                 self._get_settings(),
                 self._fen,
@@ -685,18 +789,18 @@ class Evaluation:
         }
 
     def _restart_stockfish_after_crash(self):
-        self.print(3, "Evaluation | Debug | Restarting Stockfish")
+        self._logger.info("Restarting Stockfish")
 
         if self._restarts < 200:
             self._restarts += 1
             self._initiate_stockfish_variant(self._stockfish_version)
             self._evaluate_position()
         else:
-            self.print(2, "Evaluation | Error | Too many restarts. Quitting!")
+            self._logger.info("Too many restarts. Quitting!")
             sys.exit(1)
 
     def _save_game_evaluation(self):
-        self.print(4, "Evaluation | Debug | Saving game evaluation.")
+        self._logger.debug("Saving game evaluation.")
         result = {
             "info": self._game.get_info(),
             "description": self._game.get_info_string(),
@@ -713,28 +817,27 @@ class Evaluation:
 
     def _write_to_store(self, result):
         store_key = hashlib.md5(json.dumps(result).encode("utf-8")).hexdigest()
-        self.print(5, "Evaluation | Verbose | store key:", store_key)
+        self._logger.debug("Store key:", store_key)
         ok = self._store.set(store_key, result)
         if ok:
-            self.print(
-                2,
-                "Evaluation | Info | Game stored:",
+            self._logger.info(
+                "Game stored:",
                 {"description": result["description"], "key": store_key},
             )
             self._game_results_store_keys.append(
                 {"description": result["description"], "key": store_key}
             )
         else:
-            self.print(5, "Evaluation | Error | store key not saved:", store_key)
+            self._logger.debug("Store key not saved:", store_key)
 
     def _read_from_store(self, store_key):
-        self.print(5, "Evaluation | Verbose | Redis key:", store_key)
+        self._logger.debug("Redis key:", store_key)
         result = self._store.get(store_key)
         if result:
-            self.print(5, "Evaluation | Verbose | Redis key found:", store_key)
+            self._logger.debug("Redis key found:", store_key)
             return result
         else:
-            self.print(5, "Evaluation | Error | Redis key not found:", store_key)
+            self._logger.debug("Redis key not found:", store_key)
             return None
 
     def _write_to_file(self, result):
@@ -753,7 +856,7 @@ class Evaluation:
             gf.close()
 
     def _save_position_evaluation(self, evaluation):
-        self.print(5, "Evaluation | Verbose | Saving evaluation:", evaluation)
+        self._logger.debug("Saving evaluation:", evaluation)
         self._evaluations.append(
             {
                 "evaluation": evaluation,
@@ -775,23 +878,22 @@ class Evaluation:
     def get_result_by_key(self, key):
         return self._read_from_store(key)
 
-    def print(self, level, *argv):
-        if self._debug_level >= level:
-            print(*argv)
-
 
 class Game:
     """
     Class for a single game. Created by Games class by passing a chess Game.
     """
 
-    def __init__(self, game=None, validate_fen=False, debug_level=4):
+    def __init__(self, game=None, validate_fen=False, log_level="info"):
         self._headers = {}
         self._info = {}
         self._valid = False
         self._game = game
         self._validate_fen = validate_fen
-        self._debug_level = debug_level
+
+        self._log_level = log_level
+        self._logger = Logger(level=self._log_level)
+        self._logger.debug("Initiated")
 
         self._validate_game()
 
@@ -800,7 +902,7 @@ class Game:
 
         self._set_info()
 
-        self.print(5, "Game | Debug | Game created: \n", game)
+        self._logger.debug("Game created: \n", game)
 
     def get_game(self):
         return self._game
@@ -861,28 +963,28 @@ class Game:
     def get_positions(self):
         self._positions = []
         game = self._game
-        self.print(4, "Game | Debug | Reading positions in game.")
+        self._logger.debug("Reading positions in game.")
         while True:
             try:
                 self._positions.append(self._get_fen(game))
                 game = game.next() if game.next() is not None else game
             except ValueError as ve:
-                self.print(4, "Game | Error |", ve)
+                self._logger.debug("Error:", ve)
                 continue
 
             if game.next() is None:
-                self.print(5, "Game | Debug | Reached end of game.")
+                self._logger.debug("Reached end of game.")
                 break
         return self._positions
 
     def get_moves(self):
-        self.print(4, "Game | Debug | Reading moves in game.")
+        self._logger.debug("Reading moves in game.")
         game = self._game
         while not game.is_end():
             board = game.board()
             move = board.peek()
-            self.print(4, "Game | Debug | Fullmove number:", board.fullmove_number)
-            self.print(4, "Game | Debug | Peeked move:", move)
+            self._logger.debug("Fullmove number:", board.fullmove_number)
+            self._logger.debug("Peeked move:", move)
             game = game.next()
         self._move_stack = board.move_stack
         return board.move_stack
@@ -901,9 +1003,8 @@ class Game:
         try:
             fen = game.board().fen()
             if fen != chess.STARTING_FEN:
-                self.print(
-                    3,
-                    "Game | Warning | Not a regular chess game, probably 960. Skipping!",
+                self._logger.debug(
+                    "Not a regular chess game, probably 960. Skipping!",
                 )
                 self._valid = False
             else:
@@ -911,16 +1012,15 @@ class Game:
                 if self._validate_fen == True:
                     valid = self._stockfish.is_fen_valid(fen)
                     if valid is False:
-                        self.print(3, "Game | Warning | FEN is not valid. Skipping!")
+                        self._logger.debug("FEN is not valid. Skipping!")
                         self._valid = False
-                    self.print(4, "Game | Debug | FEN is valid.")
+                    self._logger.debug("FEN is valid.")
                     self._valid = True
                 else:
                     self._valid = True
         except Exception as e:
-            self.print(
-                3,
-                "Game | Warning | Failed to validate game. Skipping! | Error was: ",
+            self._logger.debug(
+                "Failed to validate game. Skipping! | Error was: ",
                 e,
             )
             self._valid = False
@@ -932,7 +1032,7 @@ class Game:
         try:
             return game.board().fen()
         except Exception as e:
-            self.print(4, "Game | Error |", e)
+            self._logger.debug("Error", e)
             return None
 
     def _parse_date(self, date):
@@ -943,12 +1043,8 @@ class Game:
         try:
             return datetime.datetime.strptime(date, "%Y-%m-%d")  # YY-MM-DD
         except:
-            self.print(2, "Games | Error | Could not parse date.", date)
+            self._logger.debug("Could not parse date.", date)
             return date
-
-    def print(self, level, *argv):
-        if self._debug_level >= level:
-            print(*argv)
 
 
 class Games:
@@ -962,7 +1058,7 @@ class Games:
         pgn=None,
         allow_960=False,
         stockfish_variant=None,
-        debug_level=4,
+        log_level="info",
         validate_fen=True,
         limit_games=0,
     ):
@@ -973,11 +1069,14 @@ class Games:
         self._path = path
         self._allow_960 = allow_960
         self._stockfish = stockfish_variant or StockfishVariant(initiate=True)
-        self._debug_level = debug_level
         self._validate_fen = validate_fen
         self._limit_games = limit_games if limit_games > 0 else 1000000
 
-        self.print(4, "Games | Debug | Games created.")
+        self._log_level = log_level
+        self._logger = Logger(level=self._log_level)
+        self._logger.info("Initiated")
+
+        self._logger.debug("Games created.")
 
         if pgn is not None:
             self.add_pgn()
@@ -1007,24 +1106,24 @@ class Games:
         return len(self._games) >= self._limit_games
 
     def ingest_pgn(self):
-        self.print(3, "Games | Debug | Ingesting games from PGN")
+        self._logger.debug("Ingesting games from PGN")
         while True and not self._limit_reached():
             try:
                 game = chess.pgn.read_game(self._pgn)  # could be many games
                 self.ingest_game(game)
             except KeyboardInterrupt:
                 # quit
-                self.print(1, "Games | Critical | Keyboard interrupt. Quitting!")
+                self._logger.error("Keyboard interrupt. Quitting!")
                 sys.exit()
             except Exception as e:
-                self.print(3, "Games | Error | Failed to ingest game. Skipping!", e)
+                self._logger.debug("Failed to ingest game. Skipping!", e)
                 continue
             if game is None:
                 break
-        self.print(2, "Games | Info | Ingested", len(self._games), "games.")
+        self._logger.info("Ingested", len(self._games), "games.")
 
     def ingest_game(self, game):
-        g = Game(game=game, debug_level=self._debug_level)
+        g = Game(game=game, log_level=self._log_level)
         if g.is_valid():
             self._games.append(g)
         else:
@@ -1047,12 +1146,8 @@ class Games:
         try:
             return datetime.datetime.strptime(date, "%Y-%m-%d")  # YY-MM-DD
         except:
-            self.print(2, "Games | Error | Could not parse date.", date)
+            self._logger.debug("Could not parse date.", date)
             return False
-
-    def print(self, level, *argv):
-        if self._debug_level >= level:
-            print(*argv)
 
 
 class StockfishVariant:
@@ -1101,7 +1196,7 @@ class StockfishVariant:
         mode="nodes",
         binaries_folder=None,
         initiate=False,
-        debug_level=4,
+        log_level="info",
         debug_log_file=None,
         include_info=True,
     ):
@@ -1114,9 +1209,11 @@ class StockfishVariant:
         self._hash = hash
         self._mode = mode
         self._binaries_folder = binaries_folder or self._binaries_folder
-        self._debug_level = debug_level
         self._debug_log_file = debug_log_file
         self._include_info = include_info
+
+        self._log_level = log_level
+        self._logger = Logger(level=self._log_level)
 
         self.set_parameters()
 
@@ -1130,9 +1227,7 @@ class StockfishVariant:
             parameters=self.get_parameters(),
         )
         self._initiated = True
-        self.print(
-            2, "Stockfish | Info | Stockfish version", self._version, "initiated."
-        )
+        self._logger.info("Stockfish version", self._version, "initiated.")
         return self._stockfish
 
     def get_version(self):
@@ -1178,15 +1273,15 @@ class StockfishVariant:
         return self.get_long_version()["nnue"]
 
     def set_position(self, fen, refresh=False):
-        self.print(4, "StockfishVariant | Debug | Setting position", fen)
+        self._logger.debug("Setting position", fen)
         return self._stockfish.set_fen_position(fen, refresh)
 
     def is_fen_valid(self, fen):
-        self.print(4, "StockfishVariant | Debug | Validating FEN.")
+        self._logger.debug("Validating FEN.")
         return self._stockfish.is_fen_valid(fen)
 
     def set_num_nodes(self, num_nodes):
-        self.print(4, "StockfishVariant | Debug | Setting num nodes", num_nodes)
+        self._logger.debug("Setting num nodes", num_nodes)
         num_nodes = num_nodes.replace("M", "000000")
         num_nodes = num_nodes.replace("m", "000000")
         num_nodes = num_nodes.replace("K", "000")
@@ -1196,17 +1291,13 @@ class StockfishVariant:
         )  # 100k minimum
 
     def evaluate_position(self):
-        self.print(4, "StockfishVariant | Debug | Evaluating position.")
+        self._logger.debug("Evaluating position.")
         top_moves = self._stockfish.get_top_moves(
             num_top_moves=self._multi_pv, include_info=True, num_nodes=self._num_nodes
         )
-        self.print(5, "StockfishVariant | Debug! | Result of evaluation:", top_moves)
+        self._logger.debug("Result of evaluation:", top_moves)
         return top_moves
 
     def quit(self):
-        self.print(4, "StockfishVariant | Debug | Quitting.")
+        self._logger.debug("Quitting.")
         self._stockfish.send_quit_command()
-
-    def print(self, level, *argv):
-        if self._debug_level >= level:
-            print(*argv)
