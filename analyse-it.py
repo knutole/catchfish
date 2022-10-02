@@ -77,7 +77,8 @@ def run_evaluation(games):
         stockfish_versions=[15, 14, 13, 12, 11],
         historical=True,
         debug_level=2,
-        threads=196,
+        # threads=196,
+        threads=128,
         hash=32768,
         depth=20,
         multi_pv=10,
@@ -100,7 +101,6 @@ def run_evaluation(games):
             "150M",
             "200M",
         ],
-        # num_nodes=["5M"],
         mode="nodes",
         engine_log_file="/home/ubuntu/catchfish/catchfish/analysis.log",
     )
@@ -149,8 +149,8 @@ def run_analysis(key, debug_level=2):
 # run_analysis(key="591340f6165848093a8e2e5b5fab26c8", debug_level=4)
 # run_analysis(key="95cb56cb9b4279bd45f58f9cc5574217", debug_level=2) # bug
 # run_analysis(key="11006ada41c43466e012e5d5a48e2131", debug_level=2)
-run_analysis(key="b9c1251bc1628c377c1d22fa1535833f", debug_level=2)
+# run_analysis(key="b9c1251bc1628c377c1d22fa1535833f", debug_level=2)
 
 
-# games = read_games("tests/SusNiemann.pgn", limit_games=0)
-# keys = run_evaluation(games)
+games = read_games("tests/FTXCryptoCup2022.pgn", limit_games=0)
+keys = run_evaluation(games)

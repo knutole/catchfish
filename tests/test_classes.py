@@ -7,6 +7,10 @@ from catchfish import StockfishVariant, Games, Game
 
 
 class TestStockfishVariant:
+    """
+    Test StockfishVariant class
+    """
+
     @pytest.fixture
     def stockfish_variant(self):
         return StockfishVariant()
@@ -21,17 +25,18 @@ class TestStockfishVariant:
 
 
 class TestGames:
+    """
+    Test Games class
+    """
+
     @pytest.fixture
     def games(self):
         return Games()
 
     def say_hello(self, games):
-        print("saing hlello")
         assert games.say_hello() is "hello"
 
     def test_add_pgn(self, games):
         file = os.path.join(os.path.dirname(__file__), "test.pgn")
-        # pgn = open(file)
         games.read_file(file)
-        print("got some games:", len(games._games))
         assert len(games._games) > 0

@@ -52,17 +52,51 @@ class Analysis:
             initiate=True,
         )
 
+    def _initiate_evaluation(self):
+
+        # create moves by parsing PGN
+        self._pgn = io.StringIO(self._evaluation["pgn"])
+        self._game = Game(
+            game=chess.pgn.read_game(self._pgn), debug_level=self._debug_level
+        )
+        self._boards = self._game.get_boards()
+
+        moves = []
+
+        for i, board in enumerate(self._boards):
+            moves.append(
+                {
+                    "board": board,
+                    "fullmove_number": board.fullmove_number,
+                    "ply": board.ply() + 1,
+                    "turn": "white" if board.turn else "black",
+                    "move": self._boards[i + 1].peek().uci()
+                    if len(self._boards) > i + 1
+                    else None,
+                    "is_check": board.is_check(),
+                    "is_checkmate": board.is_checkmate(),
+                    "is_stalemate": board.is_stalemate(),
+                    "is_insufficient_material": board.is_insufficient_material(),
+                }
+            )
+
+        for idx, e_move in enumerate(self._evaluation["evaluation"]):
+            moves[idx].update(e_move)
+
+        self._moves = moves
+        self.print(5, "\nAnalysis | Debug | Moves:", self._moves, len(self._moves))
+
     def analyse(self):
         return self._analyse()
         pass
         # things to analyse:
         # - √ centipawnloss per move
-        # - centipawnloss average for whole game
-        # - centipawnloss average for select moves (not opening, not forced, etc)
-        # - count inaccuracies, mistakes, blunders
+        # - √ centipawnloss average for whole game
+        # - √ centipawnloss average for select moves (not opening, not forced, etc)
+        # - √ count inaccuracies, mistakes, blunders
         # - √ mark forced moves (where only one or two moves are acceptable)
         # - √ wdl loss per move
-        # - wdl loss average for whole game
+        # - √ wdl loss average for whole game
         # - √ material on board (39/39 etc.)
         # - √ top move choices
         # - top move choices for select moves (not opening, not forced, etc)
@@ -436,40 +470,6 @@ class Analysis:
 
         return abs(cpl) if cpl is not None else None
 
-    def _initiate_evaluation(self):
-
-        # create moves by parsing PGN
-        self._pgn = io.StringIO(self._evaluation["pgn"])
-        self._game = Game(
-            game=chess.pgn.read_game(self._pgn), debug_level=self._debug_level
-        )
-        self._boards = self._game.get_boards()
-
-        moves = []
-
-        for i, board in enumerate(self._boards):
-            moves.append(
-                {
-                    "board": board,
-                    "fullmove_number": board.fullmove_number,
-                    "ply": board.ply() + 1,
-                    "turn": "white" if board.turn else "black",
-                    "move": self._boards[i + 1].peek().uci()
-                    if len(self._boards) > i + 1
-                    else None,
-                    "is_check": board.is_check(),
-                    "is_checkmate": board.is_checkmate(),
-                    "is_stalemate": board.is_stalemate(),
-                    "is_insufficient_material": board.is_insufficient_material(),
-                }
-            )
-
-        for idx, e_move in enumerate(self._evaluation["evaluation"]):
-            moves[idx].update(e_move)
-
-        self._moves = moves
-        self.print(5, "\nAnalysis | Debug | Moves:", self._moves, len(self._moves))
-
     def _get_move_made(self, move):
         self.print(5, "Analysis | Debug | Got a move: ", move)
         fen = move["position"]
@@ -499,11 +499,11 @@ class RedisStore:
         self.print(
             4, "Redis | Debug | Connecting to Redis", self._host, self._port, self._db
         )
-        self._redis = redis.Redis(host=self._host, port=self._port, db=self._db)
+        self._store = redis.Redis(host=self._host, port=self._port, db=self._db)
 
     def get(self, key):
         self.print(4, "Redis | Debug | Getting key", key)
-        value = self._redis.get(key)
+        value = self._store.get(key)
         if value:
             return self.loads(value)
 
@@ -515,7 +515,7 @@ class RedisStore:
 
     def set(self, key, value):
         self.print(4, "Redis | Debug | Setting key", key)
-        return self._redis.set(key, self.dumps(value))
+        return self._store.set(key, self.dumps(value))
 
     def dumps(self, value):
         try:
@@ -531,6 +531,14 @@ class RedisStore:
 class Evaluation:
     """
     Class for making an evaluation of whole games. Takes Games, returns statistics.
+
+    Todo:
+        - Get all num_node leves done in one pass, ie. do the highest num_nodes pass, and parse
+          the results to get the lower num_nodes levels. (Need to add "raw" support to Stockfish for this)
+        - Add support for other engines than Stockfish.
+        - Add support for other modes than nodes.
+        - Add support for other variants than standard chess.
+        - Use Redis to store position / game results, and only do games and positions that are not already done.
     """
 
     def __init__(
@@ -553,7 +561,7 @@ class Evaluation:
     ):
         self._stockfish_variant = None
         self._evaluations = []
-        self._game_results_redis_keys = []
+        self._game_results_store_keys = []
         self._results = []
         self._restarts = 0
         self._crashes = 0
@@ -570,7 +578,7 @@ class Evaluation:
         self._mode = mode
         self._include_info = include_info
         self._engine_log_file = engine_log_file
-        self._redis = RedisStore(
+        self._store = RedisStore(
             host=redis_host, port=redis_port, db=redis_db, debug_level=self._debug_level
         )
 
@@ -624,7 +632,7 @@ class Evaluation:
 
                     self._save_game_evaluation()
 
-        return self._game_results_redis_keys
+        return self._game_results_store_keys
 
     def get_games(self):
         return self._games.get_games()
@@ -701,32 +709,32 @@ class Evaluation:
         self._evaluations = []
 
     def _write(self, result):
-        self._write_to_redis(result)
+        self._write_to_store(result)
 
-    def _write_to_redis(self, result):
-        redis_key = hashlib.md5(json.dumps(result).encode("utf-8")).hexdigest()
-        self.print(5, "Evaluation | Verbose | Redis key:", redis_key)
-        ok = self._redis.set(redis_key, result)
+    def _write_to_store(self, result):
+        store_key = hashlib.md5(json.dumps(result).encode("utf-8")).hexdigest()
+        self.print(5, "Evaluation | Verbose | store key:", store_key)
+        ok = self._store.set(store_key, result)
         if ok:
             self.print(
                 2,
                 "Evaluation | Info | Game stored:",
-                {"description": result["description"], "key": redis_key},
+                {"description": result["description"], "key": store_key},
             )
-            self._game_results_redis_keys.append(
-                {"description": result["description"], "key": redis_key}
+            self._game_results_store_keys.append(
+                {"description": result["description"], "key": store_key}
             )
         else:
-            self.print(5, "Evaluation | Error | Redis key not saved:", redis_key)
+            self.print(5, "Evaluation | Error | store key not saved:", store_key)
 
-    def _read_from_redis(self, redis_key):
-        self.print(5, "Evaluation | Verbose | Redis key:", redis_key)
-        result = self._redis.get(redis_key)
+    def _read_from_store(self, store_key):
+        self.print(5, "Evaluation | Verbose | Redis key:", store_key)
+        result = self._store.get(store_key)
         if result:
-            self.print(5, "Evaluation | Verbose | Redis key found:", redis_key)
+            self.print(5, "Evaluation | Verbose | Redis key found:", store_key)
             return result
         else:
-            self.print(5, "Evaluation | Error | Redis key not found:", redis_key)
+            self.print(5, "Evaluation | Error | Redis key not found:", store_key)
             return None
 
     def _write_to_file(self, result):
@@ -755,17 +763,17 @@ class Evaluation:
 
     def get_results(self):
         self._results = []
-        for item in self._game_results_redis_keys:
-            result = self._read_from_redis(item["key"])
+        for item in self._game_results_store_keys:
+            result = self._read_from_store(item["key"])
             if result:
                 self._results.append(result)
         return self._results
 
     def get_result_keys(self):
-        return self._game_results_redis_keys
+        return self._game_results_store_keys
 
     def get_result_by_key(self, key):
-        return self._read_from_redis(key)
+        return self._read_from_store(key)
 
     def print(self, level, *argv):
         if self._debug_level >= level:
@@ -1048,6 +1056,9 @@ class Games:
 
 
 class StockfishVariant:
+    """
+    Class for running Stockfish variants.
+    """
 
     _versions = [
         {"version": 9, "release_date": "2018-02-04", "nnue": False},
