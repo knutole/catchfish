@@ -1,12 +1,15 @@
-from catchfish import Catchfish
+from catchfish import Catchfish, Analysis
+import json
 
-catchfish = Catchfish(log_level="none")
+catchfish = Catchfish(log_level="debug")
 
-game_key = "game:4402f8f49e699d8208ea6e7252e8d7f6"
+game_key = "game:559565a51c704d7543d93b6117ba8e36"
 evaluation = catchfish.get_evaluation_by_key(game_key)
-print(evaluation)
 
-# # test
+a = Analysis(evaluation=json.loads(evaluation), log_level="debug")
+result = a.analyse()
+# print("All done!", result)
+print("All done!")
 
 # catchfish = Catchfish(
 #     # defaults

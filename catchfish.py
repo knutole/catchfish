@@ -109,7 +109,7 @@ class Logger:
     Class for pretty logging of INFO, DEBUG, ERROR, etc.
     """
 
-    levels = ["none", "info", "debug", "error"]
+    levels = ["none", "info", "error", "debug", "verbose"]
 
     def __init__(self, level="info"):
         self._level = level
@@ -118,12 +118,16 @@ class Logger:
         if self._levels("info"):
             self._print(message, self._level)
 
+    def error(self, *message):
+        if self._levels("error"):
+            self._print(message, self._level)
+
     def debug(self, *message):
         if self._levels("debug"):
             self._print(message, self._level)
 
-    def error(self, *message):
-        if self._levels("error"):
+    def verbose(self, *message):
+        if self._levels("verbose"):
             self._print(message, self._level)
 
     def _levels(self, level):
@@ -147,13 +151,7 @@ class Analysis:
     Class for analysing evaluated games and create aggregated statistics, like centipawnloss, wdl-changes, etc. Takes
     Evaluation result and outputs Analysis result.
 
-    Things to analyse:
-    - How deep is the position? Ie. when does the engine top move on max depth first appear? If it appears only on depth 18,
-      that's a very deep position. If it appears already on depth 1-4, then it's not a deep position.
-    - How deep is the move that was actually made? When did this move appear (if at all) in the engine's top 1, 3, 5 moves?
-      If a player makes a move that appears only in engine top 1, 3, 5 moves on depth 18, that's a very deep move. This is
-      then a measaure of how deep moves the player actually makes. This is different from how similiar to engine moves the
-      player makes, as many moves are easy/shallow, but still top engine moves.
+
 
     """
 
@@ -213,7 +211,7 @@ class Analysis:
             moves[idx].update(e_move)
 
         self._moves = moves
-        self._logger.debug("Moves:", self._moves, len(self._moves))
+        self._logger.verbose("Moves:", self._moves, len(self._moves))
 
     def analyse(self):
         return self._analyse()
@@ -236,6 +234,15 @@ class Analysis:
         # - ELO performance according to engine
         # - ELO performance compared to ELO of player in game
         # - mixing best moves from different engine/num_nodes
+        #
+        # - How deep is the position? Ie. when does the engine top move on max depth first appear? If it appears only on depth 18,
+        #   that's a very deep position. If it appears already on depth 1-4, then it's not a deep position.
+        # - How deep is the move that was actually made? When did this move appear (if at all) in the engine's top 1, 3, 5 moves?
+        #   If a player makes a move that appears only in engine top 1, 3, 5 moves on depth 18, that's a very deep move. This is
+        #   then a measaure of how deep moves the player actually makes. This is different from how similiar to engine moves the
+        #   player makes, as many moves are easy/shallow, but still top engine moves.
+        #
+        #   [] How deep are the moves based on 1) depth, 2) selective depth, 3) nodes, in reverse order of importance.
         #
         # goal:
         # - to show all (relevant) moves in a game compared to engines on different strengths
@@ -479,6 +486,12 @@ class Analysis:
         material = self._get_material(move)
         self._logger.debug("Material: ", material)
 
+        depth_of_position = self._get_depth_of_position(move)
+        self._logger.debug("Depth of position: ", depth_of_position)
+
+        depth_of_move = self._get_depth_of_move(move)
+        self._logger.debug("Depth of move: ", depth_of_move)
+
         self._moves[idx].update(
             {
                 "centipawn_loss": centipawn_loss,
@@ -488,6 +501,29 @@ class Analysis:
                 "material": material,
             }
         )
+
+    def _get_depth_of_position(self, move):
+        # best move
+        e = move["evaluation"].copy()
+        multi_pv = move["evaluation"][0]["MultiPVLine"]
+
+        # org by depths
+        depths = self._sort_depths_of_evaluation(move)
+        self._logger.debug("Sorted depths: ", json.dumps(depths))
+
+    def _get_depth_of_move(self, move):
+        pass
+
+    def _sort_depths_of_evaluation(self, move):
+        depths = {}
+        for e in move["evaluation"]:
+            if "Depth" in e:
+                d = e["Depth"]
+                if d in depths:
+                    depths[d].append(e)
+                else:
+                    depths[d] = [e]
+        return depths
 
     def _get_material(self, move):
         board = move["board"]
