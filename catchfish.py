@@ -1,25 +1,21 @@
-from re import S
+import os, io, sys, json, redis, hashlib, inspect, datetime
 from stockfish import Stockfish, StockfishException
-import chess
-import chess.pgn
-import time
-from dateutil.parser import parse
-import datetime
-import redis
-import sys
-import json
+import chess, chess.pgn
 from pydash.strings import slugify
-from pydash.arrays import reverse
-import pprint
-import os, io
-import pydash
-import hashlib
-import inspect
 
 
 class Catchfish:
     """
-    Convenience class for Catchfish!
+    Convenience class for Catchfish
+
+            .
+        ":"
+        ___:____     |"\/"|
+    ,'        `.    \  /
+    |  O        \___/  |
+    ~^~^~^~^~^~^~^~^~^~^~^~^~
+    “In this world, shipmates, sin that pays its way can travel freely and without a passport;
+    whereas Virtue, if a pauper, is stopped at all frontiers.” Moby-Dick
     """
 
     def __init__(
@@ -29,24 +25,26 @@ class Catchfish:
         historical=True,
         log_level="info",
         threads=32,
-        hash=1024,
+        hash_size=1024,
         depth=20,
         multi_pv=3,
         num_nodes=["30M"],
         mode="nodes",
         engine_log_file="debug.log",
+        raw_output=False,
     ):
         self._limit_games = limit_games
         self._stockfish_versions = stockfish_versions
         self._historical = historical
         self._log_level = log_level
         self._threads = threads
-        self._hash = hash
+        self._hash = hash_size
         self._depth = depth
         self._multi_pv = multi_pv
         self._num_nodes = num_nodes
         self._mode = mode
         self._engine_log_file = engine_log_file
+        self._raw_output = raw_output
 
         self._logger = Logger(level=self._log_level)
         self._logger.info("Initiated")
@@ -80,12 +78,15 @@ class Catchfish:
             num_nodes=self._num_nodes,
             mode=self._mode,
             engine_log_file=self._engine_log_file,
+            raw_output=self._raw_output,
         )
         self._logger.info("Starting evaluation")
         self._evaluation.evaluate()
         self._logger.info("Evaluation finished")
 
-    def analyse_evaluation(self, evaluation):
+        return self._evaluation
+
+    def analyse(self, evaluation):
         """
         Analyse an evaluation
         """
@@ -98,11 +99,17 @@ class Catchfish:
 
         return self._analysis_result
 
+    def get_evaluation_by_key(self, key):
+        e = Evaluation(log_level="none")
+        return json.dumps(e.get_result_by_key(key))
+
 
 class Logger:
     """
     Class for pretty logging of INFO, DEBUG, ERROR, etc.
     """
+
+    levels = ["none", "info", "debug", "error"]
 
     def __init__(self, level="info"):
         self._level = level
@@ -120,8 +127,7 @@ class Logger:
             self._print(message, self._level)
 
     def _levels(self, level):
-        levels = ["info", "debug", "error"]
-        return levels.index(level) <= levels.index(self._level)
+        return self.levels.index(level) <= self.levels.index(self._level)
 
     def _print(self, message, level):
         print(
@@ -140,6 +146,15 @@ class Analysis:
     """
     Class for analysing evaluated games and create aggregated statistics, like centipawnloss, wdl-changes, etc. Takes
     Evaluation result and outputs Analysis result.
+
+    Things to analyse:
+    - How deep is the position? Ie. when does the engine top move on max depth first appear? If it appears only on depth 18,
+      that's a very deep position. If it appears already on depth 1-4, then it's not a deep position.
+    - How deep is the move that was actually made? When did this move appear (if at all) in the engine's top 1, 3, 5 moves?
+      If a player makes a move that appears only in engine top 1, 3, 5 moves on depth 18, that's a very deep move. This is
+      then a measaure of how deep moves the player actually makes. This is different from how similiar to engine moves the
+      player makes, as many moves are easy/shallow, but still top engine moves.
+
     """
 
     def __init__(self, evaluation=None, log_level="info"):
@@ -640,13 +655,6 @@ class Evaluation:
     """
     Class for making an evaluation of whole games. Takes Games, returns statistics.
 
-    Todo:
-        - Get all num_node leves done in one pass, ie. do the highest num_nodes pass, and parse
-          the results to get the lower num_nodes levels. (Need to add "raw" support to Stockfish for this)
-        - Add support for other engines than Stockfish.
-        - Add support for other modes than nodes.
-        - Add support for other variants than standard chess.
-        - Use Redis to store position / game results, and only do games and positions that are not already done.
     """
 
     def __init__(
@@ -666,6 +674,7 @@ class Evaluation:
         redis_port=6379,
         redis_db=1,
         engine_log_file=None,
+        raw_output=False,
     ):
         self._stockfish_variant = None
         self._evaluations = []
@@ -685,6 +694,7 @@ class Evaluation:
         self._mode = mode
         self._include_info = include_info
         self._engine_log_file = engine_log_file
+        self._raw_output = raw_output
 
         self._log_level = log_level
         self._logger = Logger(level=self._log_level)
@@ -721,10 +731,7 @@ class Evaluation:
 
                 for game in self.get_games():
                     self._game = game
-                    self._logger.debug(
-                        "Evaluating game",
-                        game.get_info(as_json=True),
-                    )
+
                     self._logger.debug(
                         "Evaluating game",
                         game.get_info_string(),
@@ -756,6 +763,7 @@ class Evaluation:
             include_info=self._include_info,
             debug_log_file=self._engine_log_file,
             initiate=True,
+            raw_output=self._raw_output,
         )
 
     def _evaluate_position(self):
@@ -763,8 +771,19 @@ class Evaluation:
         self._stockfish_variant.set_position(self._fen)
 
         try:
-            evaluation = self._stockfish_variant.evaluate_position()
-            self._save_position_evaluation(evaluation)
+            exisiting_evaluation = self._get_position_evaluation()
+            if exisiting_evaluation:
+                self._logger.debug(
+                    "Evaluation already exists for position",
+                    self._fen,
+                    "with num_nodes",
+                    self._current_num_nodes,
+                )
+                self._set_position_evaluation(exisiting_evaluation)
+                return
+            else:
+                evaluation = self._stockfish_variant.evaluate_position()
+                self._set_position_evaluation(evaluation)
         except StockfishException as sfe:
             self._logger.info("Stockfish has crashed. Fixing...")
             self._logger.debug(
@@ -786,6 +805,7 @@ class Evaluation:
             "mode": self._mode,
             "include_info": self._include_info,
             "version": self._stockfish_version,
+            "raw_output": self._raw_output,
         }
 
     def _restart_stockfish_after_crash(self):
@@ -809,35 +829,36 @@ class Evaluation:
             "num_nodes": self._num_nodes,
             "pgn": self._game.get_pgn(headers=True),
         }
-        self._write(result)
+        key = self._write_to_store("game", result)
+        if key:
+            self._game_results_store_keys.append(
+                {"description": result["description"], "key": key}
+            )
+
         self._evaluations = []
 
-    def _write(self, result):
-        self._write_to_store(result)
-
-    def _write_to_store(self, result):
-        store_key = hashlib.md5(json.dumps(result).encode("utf-8")).hexdigest()
+    def _write_to_store(self, prefix, data):
+        store_key = (
+            prefix + ":" + hashlib.md5(json.dumps(data).encode("utf-8")).hexdigest()
+        )
         self._logger.debug("Store key:", store_key)
-        ok = self._store.set(store_key, result)
-        if ok:
+        if self._store.set(store_key, data):
             self._logger.info(
                 "Game stored:",
-                {"description": result["description"], "key": store_key},
+                {"description": data["description"], "key": store_key},
             )
-            self._game_results_store_keys.append(
-                {"description": result["description"], "key": store_key}
-            )
+            return store_key
         else:
             self._logger.debug("Store key not saved:", store_key)
 
     def _read_from_store(self, store_key):
-        self._logger.debug("Redis key:", store_key)
+        self._logger.debug("Store key:", store_key)
         result = self._store.get(store_key)
         if result:
-            self._logger.debug("Redis key found:", store_key)
+            self._logger.debug("Store key found:", store_key)
             return result
         else:
-            self._logger.debug("Redis key not found:", store_key)
+            self._logger.debug("Store key not found:", store_key)
             return None
 
     def _write_to_file(self, result):
@@ -855,13 +876,24 @@ class Evaluation:
             gf.write(json.dumps(result))
             gf.close()
 
-    def _save_position_evaluation(self, evaluation):
-        self._logger.debug("Saving evaluation:", evaluation)
+    def _get_position_evaluation(self):
+        return self._store.get(self._gen_pos_eval_key())
+
+    def _set_position_evaluation(self, evaluation):
         self._evaluations.append(
             {
                 "evaluation": evaluation,
                 "position": self._fen,
             }
+        )
+        self._store.set(self._gen_pos_eval_key(), evaluation)
+
+    def _gen_pos_eval_key(self):
+        return (
+            "position:"
+            + hashlib.md5(
+                json.dumps([self._get_settings(), self._fen]).encode("utf-8")
+            ).hexdigest()
         )
 
     def get_results(self):
@@ -1199,6 +1231,7 @@ class StockfishVariant:
         log_level="info",
         debug_log_file=None,
         include_info=True,
+        raw_output=False,
     ):
         self._initiated = False
         self._version = version
@@ -1211,6 +1244,7 @@ class StockfishVariant:
         self._binaries_folder = binaries_folder or self._binaries_folder
         self._debug_log_file = debug_log_file
         self._include_info = include_info
+        self._raw_output = raw_output
 
         self._log_level = log_level
         self._logger = Logger(level=self._log_level)
@@ -1292,9 +1326,18 @@ class StockfishVariant:
 
     def evaluate_position(self):
         self._logger.debug("Evaluating position.")
-        top_moves = self._stockfish.get_top_moves(
-            num_top_moves=self._multi_pv, include_info=True, num_nodes=self._num_nodes
-        )
+
+        if self._raw_output:
+            top_moves = self._stockfish.get_raw_lines(
+                multi_pv=self._multi_pv, num_nodes=self._num_nodes
+            )
+        else:
+            top_moves = self._stockfish.get_top_moves(
+                num_top_moves=self._multi_pv,
+                include_info=True,
+                num_nodes=self._num_nodes,
+            )
+
         self._logger.debug("Result of evaluation:", top_moves)
         return top_moves
 
