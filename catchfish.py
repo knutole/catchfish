@@ -50,15 +50,19 @@ class Catchfish:
         self._logger.info("Initiated")
         self._logger.debug("Log level:", self._log_level)
 
+        self.games = None
+        self.evaluation = None
+        self.analysis = None
+
     def load_games(self, path):
-        self._games = Games(
+        self.games = Games(
             path=path,
             log_level=self._log_level,
             limit_games=self._limit_games,
         )
-        self._logger.info("Games found: {}".format(len(self._games.get_games())))
+        self._logger.info("Games found: {}".format(len(self.games.get_games())))
         self._logger.info(
-            "Invalid games found: {}".format(self._games.get_invalid_games_count())
+            "Invalid games found: {}".format(self.games.get_invalid_games_count())
         )
 
     def evaluate(self):
@@ -66,8 +70,8 @@ class Catchfish:
         Evaluate a pgn file
         """
 
-        self._evaluation = Evaluation(
-            games=self._games,
+        self.evaluation = Evaluation(
+            games=self.games,
             stockfish_versions=self._stockfish_versions,
             historical=self._historical,
             log_level=self._log_level,
@@ -81,20 +85,21 @@ class Catchfish:
             raw_output=self._raw_output,
         )
         self._logger.info("Starting evaluation")
-        self._evaluation.evaluate()
+        self.evaluation.evaluate()
         self._logger.info("Evaluation finished")
 
-        return self._evaluation
+        return self.evaluation
 
-    def analyse(self, evaluation):
+    def analyse(self, evaluation=None, log_level=None):
         """
         Analyse an evaluation
         """
         self._logger.info("Analyse evaluation")
-        self._analysis = Analysis(
-            evaluation=self._evaluation, log_level=self._log_level
+        self.analysis = Analysis(
+            evaluation=evaluation or self.evaluation,
+            log_level=log_level or self._log_level,
         )
-        self._analysis_result = self._analysis.analyse()
+        self._analysis_result = self.analysis.analyse()
         self._logger.info("Analysis finished")
 
         return self._analysis_result
@@ -150,8 +155,6 @@ class Analysis:
     """
     Class for analysing evaluated games and create aggregated statistics, like centipawnloss, wdl-changes, etc. Takes
     Evaluation result and outputs Analysis result.
-
-
 
     """
 
@@ -215,7 +218,6 @@ class Analysis:
 
     def analyse(self):
         return self._analyse()
-        pass
         # things to analyse:
         # - √ centipawnloss per move
         # - √ centipawnloss average for whole game
@@ -253,9 +255,17 @@ class Analysis:
 
     def _analyse(self):
 
+        self._position_depths = []
+        self._move_depths = []
+
         # per move
         for idx, move in enumerate(self._moves):
             self._analyse_move(move, idx)
+
+        self._logger.info(
+            "Position depths", self._position_depths, len(self._position_depths)
+        )
+        self._logger.info("Move depths", self._move_depths, len(self._move_depths))
 
         # per game
         self._analyse_game()
@@ -338,6 +348,8 @@ class Analysis:
                 "mistakes_select_moves": black_mistakes_select_moves,
                 "blunders_select_moves": black_blunders_select_moves,
             },
+            "position_depths": self._position_depths,
+            "move_depths": self._move_depths,
         }
 
     def _get_acl_all(self, turn):
@@ -487,10 +499,10 @@ class Analysis:
         self._logger.debug("Material: ", material)
 
         depth_of_position = self._get_depth_of_position(move)
-        self._logger.debug("Depth of position: ", depth_of_position)
+        self._logger.info("Depth of position: ", depth_of_position)
 
         depth_of_move = self._get_depth_of_move(move)
-        self._logger.debug("Depth of move: ", depth_of_move)
+        self._logger.info("Depth of move: ", depth_of_move)
 
         self._moves[idx].update(
             {
@@ -502,23 +514,61 @@ class Analysis:
             }
         )
 
-    def _get_depth_of_position(self, move):
-        # best move
-        e = move["evaluation"].copy()
-        multi_pv = move["evaluation"][0]["MultiPVLine"]
-
-        # org by depths
+    def _get_depth_of_move(self, move, depth_cutoff=3):
+        move_made = move["move"]
         depths = self._sort_depths_of_evaluation(move)
-        self._logger.debug("Sorted depths: ", json.dumps(depths))
+        depth_of_move = self._drill_down_move(depths, move_made, depth_cutoff)
+        self._move_depths.append(depth_of_move["depth"] if depth_of_move else 0)
+        return depth_of_move
 
-    def _get_depth_of_move(self, move):
-        pass
+    def _drill_down_move(self, depths, move_made, depth_cutoff=3):
+        jd = []
+        made_move_was_top_move_in_these_depths = []
+
+        for depth in depths:
+            d = depths[depth][0]
+            if d["Move"] == move_made:
+                jd.append(int(d["Depth"]))
+                made_move_was_top_move_in_these_depths.append(
+                    {
+                        "nodes": int(d["Nodes"]),
+                        "depth": int(d["Depth"]),
+                        "time": int(d["Time"]),
+                        "move": d["Move"],
+                    }
+                )
+
+        for n in range(1, depth_cutoff + 1):
+            jd.remove(n) if n in jd else None
+
+        move_depth = jd[0] if len(jd) > 0 else None
+
+        if move_depth is None:
+            return None
+
+        num_p_d = len(jd)
+        agreement = (num_p_d) / (jd[-1] - jd[0] + 1)
+        depth_of_move = {
+            "depth": move_depth,
+            "depths": jd,
+            "agreement": agreement,
+        }
+
+        return depth_of_move
+
+    def _get_depth_of_position(self, move, depth_cutoff=3):
+        depths = self._sort_depths_of_evaluation(move)
+        deepest_evaluation = depths[max(depths, key=int)]
+        deepest_move = deepest_evaluation[0]["Move"]  # eg "e2e4"
+        depth_of_position = self._drill_down_move(depths, deepest_move, depth_cutoff)
+        self._position_depths.append(depth_of_position["depth"])
+        return depth_of_position
 
     def _sort_depths_of_evaluation(self, move):
         depths = {}
         for e in move["evaluation"]:
-            if "Depth" in e:
-                d = e["Depth"]
+            if "Nodes" in e:
+                d = e["Nodes"]
                 if d in depths:
                     depths[d].append(e)
                 else:
@@ -625,6 +675,8 @@ class Analysis:
                 self._moves[idx + 1]["evaluation"][0]["Centipawn"]
                 - move["evaluation"][0]["Centipawn"]
                 if len(self._moves) > idx + 1
+                and move["evaluation"][0]["Centipawn"] is not None
+                and self._moves[idx + 1]["evaluation"][0]["Centipawn"] is not None
                 else None
             )
 
@@ -1021,11 +1073,15 @@ class Game:
             + " vs "
             + self.get_header("Black")
             + " "
-            + self.get_header("Date")
-            + " "
             + self.get_header("Result")
             + " "
+            + self.get_header("Date")
+            + " "
             + self.get_header("Event")
+            + " "
+            + self.get_header("Round")
+            + " "
+            + self.get_header("PlyCount")
         )
 
     def get_positions(self):
@@ -1145,12 +1201,6 @@ class Games:
         self._logger.info("Initiated")
 
         self._logger.debug("Games created.")
-
-        if pgn is not None:
-            self.add_pgn()
-
-        if path is not None:
-            self.read_file(path)
 
         if pgn is not None:
             self.add_pgn()
@@ -1342,7 +1392,7 @@ class StockfishVariant:
     def get_nnue(self):
         return self.get_long_version()["nnue"]
 
-    def set_position(self, fen, refresh=False):
+    def set_position(self, fen, refresh=True):
         self._logger.debug("Setting position", fen)
         return self._stockfish.set_fen_position(fen, refresh)
 

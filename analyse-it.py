@@ -3,12 +3,13 @@ import json
 
 catchfish = Catchfish(log_level="debug")
 
-game_key = "game:559565a51c704d7543d93b6117ba8e36"
+# game_key = "game:559565a51c704d7543d93b6117ba8e36"
+game_key = "game:865747104611069c23e9a765377002a4"
 evaluation = catchfish.get_evaluation_by_key(game_key)
 
 a = Analysis(evaluation=json.loads(evaluation), log_level="debug")
 result = a.analyse()
-# print("All done!", result)
+print("All done!", result)
 print("All done!")
 
 # catchfish = Catchfish(

@@ -74,17 +74,20 @@ catchfish = Catchfish(
     # historical=True,
     log_level="info",
     threads=128,
-    hash_size=131072,
+    # hash_size=131072,
+    hash_size=0,
     depth=20,
     multi_pv=5,
     num_nodes=["200M"],
     mode="nodes",
-    engine_log_file="debug.log",
+    engine_log_file="zero-hash-debug.log",
     raw_output=True,
     # cache=True,
 )
 # catchfish.load_games("tests/SusNiemann.pgn")
 catchfish.load_games("tests/FTXCryptoCup2022.pgn")
+# catchfish.load_games("tests/HansNiemann.pgn")
+# catchfish.load_games("tests/kanov-niemann.pgn")
 catchfish.evaluate()
 print("All done!")
 
