@@ -216,7 +216,8 @@ class Analysis:
         self._moves = moves
         self._logger.verbose("Moves:", self._moves, len(self._moves))
 
-    def analyse(self):
+    def analyse(self, return_move_data=False):
+        self._return_move_data = return_move_data
         return self._analyse()
         # things to analyse:
         # - √ centipawnloss per move
@@ -273,7 +274,17 @@ class Analysis:
         for move in self._moves:
             move.pop("board")
 
-        return json.dumps({"game": self._game_analysis, "moves": self._moves})
+        if not self._return_move_data:
+            for move in self._moves:
+                move.pop("evaluation")
+
+        return json.dumps(
+            {
+                "info": self._game.get_info(),
+                "game": self._game_analysis,
+                "moves": self._moves,
+            }
+        )
 
     def _analyse_game(self):
 

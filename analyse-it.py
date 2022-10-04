@@ -1,32 +1,23 @@
 from catchfish import Catchfish, Analysis
 import json
 
-catchfish = Catchfish(log_level="debug")
+log_level = "none"
+catchfish = Catchfish(log_level=log_level)
 
 # game_key = "game:559565a51c704d7543d93b6117ba8e36"
-game_key = "game:865747104611069c23e9a765377002a4"
-evaluation = catchfish.get_evaluation_by_key(game_key)
+# game_key = "game:865747104611069c23e9a765377002a4"
+# game = {
+#     "description": "Carlsen, Magnus vs Niemann, Hans Moke 2022.08.16 1-0 FTX Crypto Cup 2022",
+#     "key": "game:5d16546f3e036c3057c6fc2f993d9087",
+# }
 
-a = Analysis(evaluation=json.loads(evaluation), log_level="debug")
-result = a.analyse()
-print("All done!", result)
-print("All done!")
+game = {
+    "description": "Le, Quang Liem vs Carlsen, Magnus 2022.08.18 1/2-1/2 FTX Crypto Cup 2022",
+    "key": "game:f964dc71653044e7408a9f68da0b7403",
+}  # mc 13, 10 (21) |
 
-# catchfish = Catchfish(
-#     # defaults
-#     limit_games=0,
-#     stockfish_versions=[15],
-#     # historical=True,
-#     log_level="info",
-#     threads=128,
-#     hash_size=131072,
-#     depth=20,
-#     multi_pv=5,
-#     num_nodes=["200M"],
-#     mode="nodes",
-#     engine_log_file="debug.log",
-#     raw_output=True,
-#     # cache=True,
-# )
+evaluation = catchfish.get_evaluation_by_key(game["key"])
 
-# print(catchfish.get_evaluation_by_key("game:5f7ddd291d6ae96ae6301287a6087832"))
+a = Analysis(evaluation=json.loads(evaluation), log_level=log_level)
+result = a.analyse(return_move_data=True)
+print(result)
