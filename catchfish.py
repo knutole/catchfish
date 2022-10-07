@@ -111,7 +111,7 @@ class Catchfish:
 
 class Logger:
     """
-    Class for pretty logging of INFO, DEBUG, ERROR, etc.
+    Class for pretty logging of INFO, DEBUG, ERROR, VERBOSE, etc.
     """
 
     levels = ["none", "info", "error", "debug", "verbose"]
@@ -153,8 +153,8 @@ class Logger:
 
 class Analysis:
     """
-    Class for analysing evaluated games and create aggregated statistics, like centipawnloss, wdl-changes, etc. Takes
-    Evaluation result and outputs Analysis result.
+    Class for analysing evaluated games and create aggregated statistics, like centipawnloss,
+    wdl-changes, etc. Takes Evaluation result and outputs Analysis result.
 
     """
 
@@ -253,6 +253,24 @@ class Analysis:
         # - display on beautiful waterfall graph
         # - if cheating, should be outlier. if not outlier, no proof as such
         # - if cheating, might find correlation with certain engine types/strengths
+        #
+        #
+        # more ways:
+        # - remove top 10% moves (or so) and compare niemann to all the other players, to see if his moves are at a
+        #   comparable level (ie. that his moves are "as good" in general, even if your remove everyone's top moves).
+        #   if HN is cheating, he should have more "super high" moves than the others, and be generally lower in perf otherwise
+        #
+        # - list all moves of all players in all positions (in a set of games / players), remove certain positions (known openings,
+        #   forced moves), and see what level they operate on — ie. how deep moves can they consistently find. compare players.
+        #
+        # - list all "missed" moves and how strong those moves were, ie. how "stupid" are the players generally in NOT finding
+        #   moves at depth 5, or 7. this way we can get the general performance of the players in terms of depth, nodes.
+        #
+        # - should do all of this with nodes, not depth? or both...
+        #
+        # - how many of the best moves does a player find in positions which are n deep... (should also check top three moves)
+        #
+        # - focus should be the Player, and all their games and positions and depths. Player Class.
 
     def _analyse(self):
 
@@ -515,6 +533,9 @@ class Analysis:
         depth_of_move = self._get_depth_of_move(move)
         self._logger.info("Depth of move: ", depth_of_move)
 
+        depths_of_move = self._get_depths_of_move(move)
+        self._logger.info("Depth of move: ", depth_of_move)
+
         self._moves[idx].update(
             {
                 "centipawn_loss": centipawn_loss,
@@ -522,17 +543,37 @@ class Analysis:
                 "top_engine_move": top_engine_move,
                 "legal_moves": legal_moves_count,
                 "material": material,
+                "depth_of_position": depth_of_position,
+                "depth_of_move": depth_of_move,
+                "depths_of_move": depths_of_move,
             }
         )
 
-    def _get_depth_of_move(self, move, depth_cutoff=3):
+    def _get_depth_of_move(self, move, depth_cutoff=0):
         move_made = move["move"]
         depths = self._sort_depths_of_evaluation(move)
         depth_of_move = self._drill_down_move(depths, move_made, depth_cutoff)
         self._move_depths.append(depth_of_move["depth"] if depth_of_move else 0)
         return depth_of_move
 
-    def _drill_down_move(self, depths, move_made, depth_cutoff=3):
+    def _get_depths_of_move(self, move, depth_cutoff=0):
+        move_made = move["move"]
+        depths = self._sort_depths_of_evaluation(move)
+        made_move_was_top_move_in_these_depths = []
+        for depth in depths:
+            d = depths[depth][0]
+            if d["Move"] == move_made:
+                made_move_was_top_move_in_these_depths.append(
+                    {
+                        "nodes": int(d["Nodes"]),
+                        "depth": int(d["Depth"]),
+                        "time": int(d["Time"]),
+                        "move": d["Move"],
+                    }
+                )
+        return made_move_was_top_move_in_these_depths
+
+    def _drill_down_move(self, depths, move_made, depth_cutoff=0):
         jd = []
         made_move_was_top_move_in_these_depths = []
 
@@ -567,7 +608,7 @@ class Analysis:
 
         return depth_of_move
 
-    def _get_depth_of_position(self, move, depth_cutoff=3):
+    def _get_depth_of_position(self, move, depth_cutoff=0):
         depths = self._sort_depths_of_evaluation(move)
         deepest_evaluation = depths[max(depths, key=int)]
         deepest_move = deepest_evaluation[0]["Move"]  # eg "e2e4"
@@ -707,7 +748,8 @@ class Analysis:
 
 class RedisStore:
     """
-    Class for Redis store, used by Evaluation to store and retrieve results. Faster and safer than writing to file.
+    Class for Redis store, used by Evaluation to store and retrieve results.
+    Faster and safer than writing to file.
     """
 
     def __init__(
@@ -1184,7 +1226,8 @@ class Game:
 
 class Games:
     """
-    Class for reading one or several games from a PGN string, and creating a Game for each game in the PGN string.
+    Class for reading one or several games from a PGN string,
+    and creating a Game for each game in the PGN string.
     """
 
     def __init__(
