@@ -271,6 +271,12 @@ class Analysis:
         # - how many of the best moves does a player find in positions which are n deep... (should also check top three moves)
         #
         # - focus should be the Player, and all their games and positions and depths. Player Class.
+        #
+        # - find instances where there was only one good move, the others much worse. see if HN finds these more often.
+        #
+        # - if he cheats OTB, how? security checks are a joke, so anything goes. inputting data is hard, unless we're
+        #   talking camera in contact lenses. (a bit early for that). that means either tapping with toe etc, — or
+        #   outside help.
 
     def _analyse(self):
 
