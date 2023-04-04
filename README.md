@@ -30,8 +30,9 @@ catchfish.load_games("tests/FTXCryptoCup2022.pgn")
 catchfish.evaluate()
 
 # create analysis of raw evaluation
-result = catchfish.analyse()
+analysis = catchfish.analyse()
 
-print("All done!", result)
+# use in ObservableHQ.com 🐳
+print(analysis)
 
 ```
