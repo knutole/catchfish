@@ -1,5 +1,5 @@
 # Catchfish 🐳
-Python library for analysing chess games using Stockfish
+A Python library that analyzes chess games utilizing the Stockfish engine, which could potentially detect circumstantial evidence of cheating. 
 
 ## Usage
 
