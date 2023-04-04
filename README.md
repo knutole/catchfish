@@ -1,3 +1,6 @@
+# Catchfish 🐳
+Python library for analysing chess games using Stockfish
+
 ## Usage
 
 ```python
