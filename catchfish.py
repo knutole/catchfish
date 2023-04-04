@@ -183,7 +183,6 @@ class Analysis:
         )
 
     def _initiate_evaluation(self):
-
         # create moves by parsing PGN
         self._pgn = io.StringIO(self._evaluation["pgn"])
         self._game = Game(
@@ -249,14 +248,14 @@ class Analysis:
         #
         # goal:
         # - to show all (relevant) moves in a game compared to engines on different strengths
-        # - compare susmann with other players
+        # - compare x with other players
         # - display on beautiful waterfall graph
         # - if cheating, should be outlier. if not outlier, no proof as such
         # - if cheating, might find correlation with certain engine types/strengths
         #
         #
         # more ways:
-        # - remove top 10% moves (or so) and compare niemann to all the other players, to see if his moves are at a
+        # - remove top 10% moves (or so) and compare x to all the other players, to see if his moves are at a
         #   comparable level (ie. that his moves are "as good" in general, even if your remove everyone's top moves).
         #   if HN is cheating, he should have more "super high" moves than the others, and be generally lower in perf otherwise
         #
@@ -274,12 +273,11 @@ class Analysis:
         #
         # - find instances where there was only one good move, the others much worse. see if HN finds these more often.
         #
-        # - if he cheats OTB, how? security checks are a joke, so anything goes. inputting data is hard, unless we're
-        #   talking camera in contact lenses. (a bit early for that). that means either tapping with toe etc, — or
+        # - if x cheats OTB, how? security checks are a joke, so anything goes. inputting data is hard, unless we're
+        #   talking camera in contact lenses (a bit early for that). that means either tapping with toe (unlikely) — or
         #   outside help.
 
     def _analyse(self):
-
         self._position_depths = []
         self._move_depths = []
 
@@ -311,7 +309,6 @@ class Analysis:
         )
 
     def _analyse_game(self):
-
         white_acl_all_moves = self._get_acl_all("white")
         white_acl_select_moves = self._get_acl_select(
             turn="white", ignore_first_moves=10, ignore_forced_moves=3
@@ -852,7 +849,6 @@ class Evaluation:
         )
 
     def evaluate(self):
-
         self._logger.info(
             "Running evaluation matrix with",
             self._stockfish_versions,

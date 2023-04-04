@@ -44,9 +44,6 @@ def run_evaluation(games):
     print("All done!", keys)
     return keys
 
-    # key = "c120e0cf57de267a3e14f9668e6ec1bb"
-    # print("All done!", evaluation.get_result_by_key(key))
-
     # silicon strength
     # - iphone 13 can do 1M N/s, ie. 30M nodes in 30 seconds.
     # - samsung 2018 ?
@@ -84,30 +81,6 @@ catchfish = Catchfish(
     raw_output=True,
     # cache=True,
 )
-# catchfish.load_games("tests/SusNiemann.pgn")
 catchfish.load_games("tests/FTXCryptoCup2022.pgn")
-# catchfish.load_games("tests/HansNiemann.pgn")
-# catchfish.load_games("tests/kanov-niemann.pgn")
 catchfish.evaluate()
 print("All done!")
-
-
-# # test
-# catchfish = Catchfish(
-#     # defaults
-#     limit_games=0,
-#     stockfish_versions=[15],
-#     # historical=True,
-#     log_level="info",
-#     threads=128,
-#     hash_size=131072,
-#     depth=20,
-#     multi_pv=5,
-#     num_nodes=["200M"],
-#     mode="nodes",
-#     engine_log_file="debug.log",
-#     raw_output=True,
-#     # cache=True,
-# )
-
-# print(catchfish.get_evaluation_by_key("game:5f7ddd291d6ae96ae6301287a6087832"))

@@ -20,7 +20,7 @@ catchfish = Catchfish(
     engine_log_file="debug.log",
 )
 
-# load PGN
+# load PGN with multiple games
 catchfish.load_games("tests/FTXCryptoCup2022.pgn")
 
 # run engine evaluation
