@@ -4,7 +4,6 @@ A Python library that analyzes chess games utilizing the Stockfish engine, which
 ## Usage
 
 ```python
-import os, sys
 from catchfish import Catchfish
 
 # create instance
