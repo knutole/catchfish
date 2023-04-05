@@ -7,7 +7,7 @@ A Python library that analyzes chess games utilizing the Stockfish engine, which
 from catchfish import Catchfish
 
 # create instance
-catchfish = Catchfish(
+fish = Catchfish(
     # defaults
     limit_games=0,
     stockfish_versions=[15],
@@ -23,13 +23,13 @@ catchfish = Catchfish(
 )
 
 # load PGN with multiple games
-catchfish.load_games("tests/FTXCryptoCup2022.pgn")
+fish.load_games("tests/FTXCryptoCup2022.pgn")
 
 # run engine evaluation
-catchfish.evaluate()
+fish.evaluate()
 
 # create analysis of raw evaluation
-analysis = catchfish.analyse()
+analysis = fish.analyse()
 
 # use in ObservableHQ.com 🐳
 print(analysis)
