@@ -3,6 +3,13 @@ A Python library that analyzes chess games utilizing the Stockfish engine, which
 
 ## Usage
 
+### Setup ehemeral storage
+The `Evaluation` class uses [Redis]([url](https://hub.docker.com/_/redis)) for storage of results, connecting to `localhost:6379` by default. Start Redis prior to  using `Catchfish`:
+```bash
+docker run --name some-redis -p 6379:6379 -d redis
+```
+
+### Run
 ```python
 from catchfish import Catchfish
 
